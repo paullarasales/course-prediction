@@ -1,89 +1,53 @@
 import pandas as pd
-import numpy as np
-import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-import seaborn as sns
-import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import TensorBoard
+import os
+import joblib
 
 def train_and_save_model():
-    # Load the data
-    data = pd.read_csv('data/data.csv')
+    # Load the dataset
+    data = pd.read_csv("data/large_course_recommendation_dataset.csv")
 
-    # Preview the data
-    print("📊 Data Overview:")
-    print(data.head())
+    # Feature columns
+    X = data[['Technology_Score', 'Science_Score', 'Arts_Score', 'Business_Score']]
+    y = data['Recommended_Program']
 
-    # Feature columns and target column
-    X = data.drop(columns='Recommended_Program')  # Features: All columns except the target
-    y = data['Recommended_Program']  # Target: Recommended Program
-
-    # Encode the target labels
-    encoder = LabelEncoder()
-    y_encoded = encoder.fit_transform(y)  # Encoding the target labels (e.g., Technology -> 0, Arts -> 1)
-
-    # Check the unique values in y_encoded
-    print("Unique encoded labels:", np.unique(y_encoded))
-
-    # Ensure the number of output classes matches the unique labels
-    num_classes = len(np.unique(y_encoded))
+    # Encode the labels since TensorFlow models need numeric labels
+    label_encoder = LabelEncoder()
+    y_encoded = label_encoder.fit_transform(y)
 
     # Split the data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42)
 
-    # Build a simple Neural Network model using TensorFlow
-    model = tf.keras.Sequential([
-        tf.keras.layers.Dense(64, input_dim=X_train.shape[1], activation='relu'),
-        tf.keras.layers.Dense(32, activation='relu'),
-        tf.keras.layers.Dense(num_classes, activation='softmax')  # Adjust the number of output classes
-    ])
+    # Build the neural network model
+    model = Sequential()
+    model.add(Dense(64, input_dim=X_train.shape[1], activation='relu'))  # Input layer and hidden layer
+    model.add(Dense(32, activation='relu'))  # hidden layer
+    model.add(Dense(len(label_encoder.classes_), activation='softmax'))  # Output layer (softmax for multi-class classification)
+    
+    model.compile(optimizer=Adam(), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
-    # Compile the model
-    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    log_dir = os.path.join("logs", "fit")
+    tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
 
     # Train the model
-    history = model.fit(X_train, y_train, epochs=100, batch_size=10, validation_data=(X_test, y_test))
+    model.fit(X_train, y_train, epochs=20, batch_size=32, validation_data=(X_test, y_test), callbacks=[tensorboard_callback])
 
     # Evaluate the model
-    loss, accuracy = model.evaluate(X_test, y_test)
-    print(f"\n✅ Model Training Complete! Accuracy: {accuracy:.2f}")
+    _, accuracy = model.evaluate(X_test, y_test)
+    print(f"Model accuracy: {accuracy * 100:.2f}%")
 
-    # Predict with the model
-    y_pred = np.argmax(model.predict(X_test), axis=1)  # Convert softmax output to class predictions
+    # Save the trained model and label encoder
+    model.save('course_recommendation_model.h5')
+    joblib.dump(label_encoder, 'label_encoder.pkl')
+    print("Model trained and saved as 'course_recommendation_model.h5'.")
+    print("Label encoder saved as 'label_encoder.pkl'.")
 
-    # Ensure the number of unique labels matches the target names
-    unique_labels = np.unique(y_encoded)
-    target_names = encoder.inverse_transform(unique_labels)
-
-    print("\n🔍 Classification Report:")
-    print(classification_report(y_test, y_pred, target_names=target_names, zero_division=1))
-
-    # Confusion Matrix
-    cm = confusion_matrix(y_test, y_pred)
-    plt.figure(figsize=(10, 7))
-    sns.heatmap(cm, annot=True, fmt='d', xticklabels=target_names, yticklabels=target_names)
-    plt.xlabel('Predicted')
-    plt.ylabel('True')
-    plt.title('Confusion Matrix')
-    plt.show()
-
-    # Save the model and encoder for later use
-    model.save('model.h5')
-    np.save('classes.npy', encoder.classes_)
-
-def predict_program(scores):
-    # Load the model and encoder
-    model = tf.keras.models.load_model('model.h5')
-    classes = np.load('classes.npy', allow_pickle=True)
-    encoder = LabelEncoder()
-    encoder.classes_ = classes
-
-    # Make a prediction for the new student
-    new_student_scores = np.array([scores])
-    predicted_program = model.predict(new_student_scores)
-    predicted_label = encoder.inverse_transform([np.argmax(predicted_program)])
-    return predicted_label[0]
-
+# Run the training function
 if __name__ == "__main__":
     train_and_save_model()

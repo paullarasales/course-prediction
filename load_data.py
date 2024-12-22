@@ -5,7 +5,7 @@ def load_data():
     """Load data from the CSV file and display it."""
     data_folder = "data"
     filepath = os.path.join(data_folder, "data.csv")
-    print("Absolute path of the file:", os.path.abspath(filepath))  # Print the correct absolute path
+    print("Absolute path of the file:", os.path.abspath(filepath)) 
 
     try:
         df = pd.read_csv(filepath)
